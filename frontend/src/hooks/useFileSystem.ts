@@ -1,4 +1,6 @@
-import { useState, useEffect } from 'react';
+// frontend/src/hooks/useFileSystem.ts
+import { useState, useEffect, useCallback } from 'react';
+import { Socket, io } from 'socket.io-client';
 import axios from 'axios';
 
 interface Item {
@@ -9,61 +11,94 @@ interface Item {
   isOpen?: boolean;
 }
 
-const api = axios.create({
-  baseURL: 'http://localhost:3001/api',
-  headers: {
-    'Content-Type': 'application/json'
-  }
-});
-
 export const useFileSystem = () => {
+  const [socket, setSocket] = useState<Socket | null>(null);
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [connected, setConnected] = useState(false);
 
-  // Load initial data
+  // Initialize socket connection
   useEffect(() => {
-    const loadFileSystem = async () => {
-      try {
-        const response = await api.get('/filesystem');
-        setItems(response.data.items);
-        setError(null);
-      } catch (err) {
-        setError('Failed to load file system');
-      } finally {
-        setLoading(false);
-      }
-    };
+    const newSocket = io('http://localhost:3001');
+    setSocket(newSocket);
 
-    loadFileSystem();
+    // Socket connection handlers
+    newSocket.on('connect', () => {
+      console.log('Connected to server');
+      setConnected(true);
+      setError(null);
+    });
+
+    newSocket.on('connect_error', () => {
+      setError('Connection to server failed');
+      setConnected(false);
+    });
+
+    newSocket.on('disconnect', () => {
+      setConnected(false);
+    });
+
+    // Cleanup on unmount
+    return () => {
+      newSocket.close();
+    };
   }, []);
 
-  // Update items with server sync
-  const updateItems = async (newItems: Item[]) => {
-    try {
-      await api.put('/filesystem', { items: newItems });
-      setItems(newItems);
-      setError(null);
-    } catch (err) {
-      setError('Failed to save changes');
-    }
-  };
+  // Set up data handlers
+  useEffect(() => {
+    if (!socket) return;
 
-  // Toggle folder
-  const toggleFolder = (folderId: string) => {
+    // Handle initial data load
+    socket.on('initialData', (data: Item[]) => {
+      setItems(data);
+      setLoading(false);
+    });
+
+    // Handle updates from other clients
+    socket.on('itemsUpdated', (updatedItems: Item[]) => {
+      setItems(updatedItems);
+    });
+
+    // Handle errors
+    socket.on('error', (message: string) => {
+      setError(message);
+    });
+
+    return () => {
+      socket.off('initialData');
+      socket.off('itemsUpdated');
+      socket.off('error');
+    };
+  }, [socket]);
+
+  // Update items with real-time sync
+  const updateItems = useCallback((newItems: Item[]) => {
+    setItems(newItems);
+    // Only emit if we're connected
+    if (socket?.connected) {
+      socket.emit('updateItems', newItems);
+    } else {
+      setError('Changes not saved - disconnected from server');
+    }
+  }, [socket]);
+
+  // Toggle folder with real-time sync
+  const toggleFolder = useCallback((folderId: string) => {
     const newItems = items.map(item =>
       item.id === folderId && item.type === 'folder'
         ? { ...item, isOpen: !item.isOpen }
         : item
     );
     updateItems(newItems);
-  };
+  }, [items, updateItems]);
 
   return {
     items,
     setItems: updateItems,
     toggleFolder,
     loading,
-    error
+    error,
+    connected
   };
 };

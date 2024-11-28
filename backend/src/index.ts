@@ -5,6 +5,7 @@ import { Server } from 'socket.io';
 import mongoose from 'mongoose';
 import cors from 'cors';
 import { FileSystem } from './models/FileSystem';
+import { config } from './config';
 
 const app = express();
 const httpServer = createServer(app);
@@ -12,15 +13,17 @@ const httpServer = createServer(app);
 // Create Socket.IO server with CORS settings for development
 const io = new Server(httpServer, {
   cors: {
-    origin: "http://localhost:5173", // Vite's default port
-    methods: ["GET", "POST"]
+    origin: config.cors.origin,
+    credentials: true
   }
 });
 
-app.use(cors());
+app.use(cors({
+  origin: config.cors.origin,
+  credentials: true
+}));
 app.use(express.json());
-
-mongoose.connect('mongodb://localhost:27017/filesystem');
+mongoose.connect(config.mongo.uri);
 
 // Track connected clients for debugging
 let connectedClients = 0;
@@ -59,7 +62,7 @@ io.on('connection', async (socket) => {
   });
 });
 
-// Keep the REST endpoint for initial page load
+// REST endpoint for initial page load
 app.get('/api/filesystem', async (req, res) => {
   try {
     const fileSystem = await FileSystem.findOne();
@@ -69,6 +72,6 @@ app.get('/api/filesystem', async (req, res) => {
   }
 });
 
-httpServer.listen(3001, () => {
-  console.log('Server running on port 3001');
+httpServer.listen(config.server.port, () => {
+  console.log(`Server running on port ${config.server.port}`);
 });

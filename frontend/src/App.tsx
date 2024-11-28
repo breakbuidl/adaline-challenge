@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import { useState, useRef } from 'react';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { 
@@ -50,9 +50,9 @@ const DraggableItem = ({
     }),
   });
 
-  const [{ isOver }, drop] = useDrop({
+  const [{ isOver }, drop] = useDrop<{ id: string; parentId: string | null }>({
     accept: 'ITEM',
-    hover: (draggedItem: any, monitor) => {
+    hover: (_draggedItem: any, monitor) => {
       if (!ref.current) return;
       
       const hoverBoundingRect = ref.current.getBoundingClientRect();
